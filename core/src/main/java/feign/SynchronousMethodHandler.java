@@ -70,6 +70,7 @@ final class SynchronousMethodHandler implements MethodHandler {
 
   @Override
   public Object invoke(Object[] argv) throws Throwable {
+    // 构造请求模板
     RequestTemplate template = buildTemplateFromArgs.create(argv);
     Retryer retryer = this.retryer.clone();
     while (true) {

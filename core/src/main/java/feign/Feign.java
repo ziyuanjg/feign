@@ -145,6 +145,7 @@ public abstract class Feign {
 
     /**
      * Allows to map the response before passing it to the decoder.
+     * 可以实现自定义的处理器，先对Response进行定制化处理
      */
     public Builder mapAndDecode(ResponseMapper mapper, Decoder decoder) {
       this.decoder = new ResponseMappingDecoder(mapper, decoder);
@@ -183,6 +184,7 @@ public abstract class Feign {
 
     /**
      * Adds a single request interceptor to the builder.
+     * request拦截器链路，可以自定义实现
      */
     public Builder requestInterceptor(RequestInterceptor requestInterceptor) {
       this.requestInterceptors.add(requestInterceptor);

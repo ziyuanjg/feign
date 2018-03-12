@@ -121,6 +121,9 @@ public class ReflectiveFeign extends Feign {
     }
   }
 
+  /**
+   * 根据ClassName封装method调用
+   */
   static final class ParseHandlersByName {
 
     private final Contract contract;
@@ -141,6 +144,10 @@ public class ReflectiveFeign extends Feign {
     }
 
     public Map<String, MethodHandler> apply(Target key) {
+
+      /**
+       * 解析类中的方法，将方法信息封装为MethodMetadata
+       */
       List<MethodMetadata> metadata = contract.parseAndValidatateMetadata(key.type());
       Map<String, MethodHandler> result = new LinkedHashMap<String, MethodHandler>();
       for (MethodMetadata md : metadata) {
@@ -189,6 +196,7 @@ public class ReflectiveFeign extends Feign {
     @Override
     public RequestTemplate create(Object[] argv) {
       RequestTemplate mutable = new RequestTemplate(metadata.template());
+      // 处理参数包含URI的情况
       if (metadata.urlIndex() != null) {
         int urlIndex = metadata.urlIndex();
         checkArgument(argv[urlIndex] != null, "URI parameter %s was null", urlIndex);

@@ -45,10 +45,13 @@ public interface Contract {
 
     @Override
     public List<MethodMetadata> parseAndValidatateMetadata(Class<?> targetType) {
+      //不支持在类上声明泛型
       checkState(targetType.getTypeParameters().length == 0, "Parameterized types unsupported: %s",
                  targetType.getSimpleName());
+      //TODO 仅支持单继承，此处可能是为了规避Client使用的是类，但是后面执行的时候又不允许非接口执行，比较奇怪
       checkState(targetType.getInterfaces().length <= 1, "Only single inheritance supported: %s",
                  targetType.getSimpleName());
+      //仅支持单级继承
       if (targetType.getInterfaces().length == 1) {
         checkState(targetType.getInterfaces()[0].getInterfaces().length == 0,
                    "Only single-level inheritance supported: %s",
@@ -56,6 +59,7 @@ public interface Contract {
       }
       Map<String, MethodMetadata> result = new LinkedHashMap<String, MethodMetadata>();
       for (Method method : targetType.getMethods()) {
+        //静态方法和default方法不处理
         if (method.getDeclaringClass() == Object.class ||
             (method.getModifiers() & Modifier.STATIC) != 0 ||
             Util.isDefault(method)) {
@@ -85,12 +89,13 @@ public interface Contract {
       data.returnType(Types.resolve(targetType, targetType, method.getGenericReturnType()));
       data.configKey(Feign.configKey(targetType, method));
 
+      // 解析类注解
       if(targetType.getInterfaces().length == 1) {
         processAnnotationOnClass(data, targetType.getInterfaces()[0]);
       }
       processAnnotationOnClass(data, targetType);
 
-
+      // 解析方法注解
       for (Annotation methodAnnotation : method.getAnnotations()) {
         processAnnotationOnMethod(data, methodAnnotation, method);
       }
@@ -100,6 +105,7 @@ public interface Contract {
       Class<?>[] parameterTypes = method.getParameterTypes();
       Type[] genericParameterTypes = method.getGenericParameterTypes();
 
+      // 解析参数注解
       Annotation[][] parameterAnnotations = method.getParameterAnnotations();
       int count = parameterAnnotations.length;
       for (int i = 0; i < count; i++) {
@@ -193,6 +199,12 @@ public interface Contract {
   }
 
   class Default extends BaseContract {
+
+    /**
+     * 解析类上的Headers注解
+     * @param data       metadata collected so far relating to the current java method.
+     * @param targetType
+     */
     @Override
     protected void processAnnotationOnClass(MethodMetadata data, Class<?> targetType) {
       if (targetType.isAnnotationPresent(Headers.class)) {
@@ -206,6 +218,12 @@ public interface Contract {
       }
     }
 
+    /**
+     * 解析方法上的RequestLine、Body、Headers注解
+     * @param data       metadata collected so far relating to the current java method.
+     * @param methodAnnotation
+     * @param method     method currently being processed.
+     */
     @Override
     protected void processAnnotationOnMethod(MethodMetadata data, Annotation methodAnnotation,
                                              Method method) {
@@ -214,6 +232,7 @@ public interface Contract {
         String requestLine = RequestLine.class.cast(methodAnnotation).value();
         checkState(emptyToNull(requestLine) != null,
                    "RequestLine annotation was empty on method %s.", method.getName());
+        //TODO 单写一个请求类型可以通过，但是不会发起请求
         if (requestLine.indexOf(' ') == -1) {
           checkState(requestLine.indexOf('/') == -1,
               "RequestLine annotation didn't start with an HTTP verb on method %s.",
@@ -221,16 +240,17 @@ public interface Contract {
           data.template().method(requestLine);
           return;
         }
+        // 截取http请求类型
         data.template().method(requestLine.substring(0, requestLine.indexOf(' ')));
         if (requestLine.indexOf(' ') == requestLine.lastIndexOf(' ')) {
           // no HTTP version is ok
           data.template().append(requestLine.substring(requestLine.indexOf(' ') + 1));
         } else {
-          // skip HTTP version
+          // skip HTTP version 此处有一个需要注意的地方，如果手误在GET后面多打了空格，会导致请求不到接口！
           data.template().append(
               requestLine.substring(requestLine.indexOf(' ') + 1, requestLine.lastIndexOf(' ')));
         }
-
+        // 设置符号转义开关
         data.template().decodeSlash(RequestLine.class.cast(methodAnnotation).decodeSlash());
 
       } else if (annotationType == Body.class) {
@@ -250,6 +270,14 @@ public interface Contract {
       }
     }
 
+    /**
+     * 解析参数上的Param、QueryMap、HeaderMap注解
+     * @param data        metadata collected so far relating to the current java method.
+     * @param annotations annotations present on the current parameter annotation.
+     * @param paramIndex  if you find a name in {@code annotations}, call {@link
+     *                    #nameParam(MethodMetadata, String, int)} with this as the last parameter.
+     * @return
+     */
     @Override
     protected boolean processAnnotationsOnParameter(MethodMetadata data, Annotation[] annotations,
                                                     int paramIndex) {
@@ -260,6 +288,7 @@ public interface Contract {
           Param paramAnnotation = (Param) annotation;
           String name = paramAnnotation.value();
           checkState(emptyToNull(name) != null, "Param annotation was empty on param %s.", paramIndex);
+          // 绑定形参别名
           nameParam(data, name, paramIndex);
           Class<? extends Param.Expander> expander = paramAnnotation.expander();
           if (expander != Param.ToStringExpander.class) {
@@ -275,6 +304,7 @@ public interface Contract {
           }
         } else if (annotationType == QueryMap.class) {
           checkState(data.queryMapIndex() == null, "QueryMap annotation was present on multiple parameters.");
+          // TODO 此处貌似仅支持一个QueryMap注解，如果有多个不知道会不会覆盖，待测
           data.queryMapIndex(paramIndex);
           data.queryMapEncoded(QueryMap.class.cast(annotation).encoded());
           isHttpAnnotation = true;
